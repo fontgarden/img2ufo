@@ -75,10 +75,17 @@ snap the targets to multiples of 8/16.
 
 ## Project context
 
-- **Everything machine-made is ORANGE** (public.markColor "1,0.5,0,1")
-  per the mark-color convention: green = human-approved (only humans
-  assign it), yellow = trusted-not-graded, orange = machine draft,
-  red = garbage. Per glyph, never per font.
+- **Everything machine-made is PURPLE** (public.markColor
+  "0.54,0.44,0.88,1"), the Font.Garden mark of a draft that the designer
+  has not reviewed. Red, orange, yellow and green are the designer's
+  grades. A rebuild replaces only purple and red glyphs; it keeps every
+  other glyph. Per glyph, never per font.
+- **The repository comes from the template**, not from img2ufo:
+  https://github.com/fontgarden/font-project-template. Create the project
+  from it, run `make customize`, then run img2ufo with `--output` on the
+  UFO in `sources/` and `--worklist out/specimen/completion.json`. The
+  task contract is `.agents/tasks/specimen-intake.md` in the template.
+  QA in a project is `make qa` (fgtools), so pass `--no-qa` here.
 - **Mekorot**: tri-script family (Hebrew + Arabic + specimen-traced
   Latin) unified under the smooth x powers-of-two-grid style —
   `docs/mekorot-style.md`. The restyler lives at

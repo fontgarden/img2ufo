@@ -149,14 +149,41 @@ impl SpecimenMetrics {
     }
 }
 
-/// Mark color values matching Runebender's palette (theme::mark::RGBA_STRINGS).
-/// Green = hand-corrected, keep on rebuild.
-pub(crate) const GREEN_MARK_PREFIX: &str = "0.3,0.7,0.3";
-/// Red = pipeline output, will be regenerated on next rebuild.
-const RED_MARK: &str = "1,0.3,0.3,1";
+/// Purple marks a machine draft that the designer has not reviewed. The
+/// Font.Garden mark colors: purple is an unreviewed draft; red, orange, yellow
+/// and green are the designer's grades.
+pub(crate) const DRAFT_MARK: &str = "0.54,0.44,0.88,1";
+
+/// The RGB values of the marks that a rebuild can replace: purple (an
+/// unreviewed draft) and red (graded as broken).
+const REPLACEABLE_MARKS: [[f64; 3]; 5] = [
+    [0.54, 0.44, 0.88],
+    [0.5, 0.0, 1.0],
+    [1.0, 0.0, 0.0],
+    [1.0, 0.29, 0.24],
+    [1.0, 0.3, 0.3],
+];
+
+/// True if a rebuild must keep the existing glyph: every glyph that is not
+/// purple or red. A graded or unmarked glyph can hold the designer's work.
+pub(crate) fn keep_on_rebuild(glyph: &Glyph) -> bool {
+    let mark = glyph
+        .lib
+        .get("public.markColor")
+        .and_then(|v| v.as_string())
+        .unwrap_or("");
+    let rgb: Vec<f64> = mark.split(',').filter_map(|v| v.trim().parse().ok()).collect();
+    if rgb.len() < 3 {
+        return true;
+    }
+    !REPLACEABLE_MARKS
+        .iter()
+        .any(|m| m.iter().zip(&rgb).all(|(a, b)| (a - b).abs() < 0.015))
+}
 
 /// Build the UFO. If the output UFO already exists, green-marked glyphs are
-/// preserved (not overwritten). All newly traced glyphs are marked red.
+/// preserved (not overwritten): every glyph that is not purple or red. All
+/// newly traced glyphs are marked purple.
 pub fn build(
     config: &PipelineConfig,
     manifest: &Manifest,
@@ -221,12 +248,7 @@ pub fn build(
         // Preserve green (hand-corrected) glyphs from the existing UFO.
         if let Some(ref existing) = existing_font {
             if let Some(existing_glyph) = existing.default_layer().get_glyph(&glyph_name) {
-                let mark = existing_glyph
-                    .lib
-                    .get("public.markColor")
-                    .and_then(|v| v.as_string())
-                    .unwrap_or("");
-                if mark.starts_with(GREEN_MARK_PREFIX) {
+                if keep_on_rebuild(existing_glyph) {
                     font.default_layer_mut().insert_glyph(existing_glyph.clone());
                     glyph_order.push(glyph_name.clone());
                     report.green_kept += 1;
@@ -234,7 +256,7 @@ pub fn build(
                         report.encoded.insert(ch as u32);
                     }
                     if config.verbose {
-                        eprintln!("ufo_builder: keeping green {glyph_name:?}");
+                        eprintln!("ufo_builder: keeping reviewed {glyph_name:?}");
                     }
                     continue;
                 }
@@ -296,7 +318,13 @@ pub fn build(
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("font");
-    report.worklist_path = ufo_path.with_file_name(format!("{stem}-completion.json"));
+    report.worklist_path = config
+        .worklist
+        .clone()
+        .unwrap_or_else(|| ufo_path.with_file_name(format!("{stem}-completion.json")));
+    if let Some(parent) = report.worklist_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     std::fs::write(
         &report.worklist_path,
         serde_json::to_string_pretty(&report.completion)?,
@@ -360,14 +388,27 @@ fn trace_one(
     let lsb = spacing_defaults.sidebearing(left_class);
     let rsb = spacing_defaults.sidebearing(right_class);
 
+    // Scan dust: drop a contour with fewer than 3 points, or smaller than
+    // 2% of the em in both directions. The smallest part of a glyph, a dot
+    // or a comma, is larger.
+    let dust = config.upm as f64 * 0.02;
+    placed.outline.contours.retain(|contour| {
+        let xs = contour.points.iter().map(|p| p.x);
+        let ys = contour.points.iter().map(|p| p.y);
+        let width = xs.clone().fold(f64::MIN, f64::max) - xs.fold(f64::MAX, f64::min);
+        let height = ys.clone().fold(f64::MIN, f64::max) - ys.fold(f64::MAX, f64::min);
+        contour.points.len() >= 3 && width.max(height) >= dust
+    });
+    anyhow::ensure!(!placed.outline.contours.is_empty(), "no ink in {glyph_name}");
+
     let (ink_x_min, ink_x_max, ink_y_min, ink_y_max) = outline_bounds(&placed.outline);
-    let dx = lsb - ink_x_min;
-    // dx is grid-aligned already (lsb snapped, ink_x_min at 0 from placement),
-    // but round defensively so coordinates stay integers.
-    let dx = dx.round();
+    // The ink edge of a curve is not on the grid, so snap the shift, and
+    // then every point, to the grid.
+    let dx = snap(lsb - ink_x_min, config.grid);
     for contour in &mut placed.outline.contours {
         for point in &mut contour.points {
-            point.x += dx;
+            point.x = snap(point.x + dx, config.grid);
+            point.y = snap(point.y, config.grid);
         }
     }
     placed.advance_width = snap(ink_x_max + dx + rsb, config.grid);
@@ -376,10 +417,10 @@ fn trace_one(
     let mut glyph = img2bez::ufo::to_glyph(glyph_name, &placed, &codepoints)
         .map_err(|e| anyhow::anyhow!("img2bez glif conversion: {e}"))?;
 
-    // Mark as red (pipeline output, regenerated on the next rebuild).
+    // Mark as an unreviewed draft, which the next rebuild can replace.
     glyph
         .lib
-        .insert("public.markColor".into(), Value::String(RED_MARK.into()));
+        .insert("public.markColor".into(), Value::String(DRAFT_MARK.into()));
 
     Ok((glyph, ink_y_min, ink_y_max))
 }
@@ -412,10 +453,11 @@ fn snap(v: f64, grid: i32) -> f64 {
 /// Add a .notdef glyph with a standard open-box rectangle.
 fn add_notdef(font: &mut Font, config: &PipelineConfig) {
     let upm = config.upm as f64;
-    let w = upm * 0.5;
-    let asc = config.ascender as f64;
-    let desc = config.descender as f64;
-    let stroke = upm * 0.05;
+    let grid = config.grid.max(1) * 4;
+    let w = snap(upm * 0.5, grid);
+    let asc = snap(config.ascender as f64, grid);
+    let desc = snap(config.descender as f64, grid);
+    let stroke = snap(upm * 0.05, grid);
 
     let mut glyph = Glyph::new(".notdef");
     glyph.width = w;
@@ -512,6 +554,10 @@ fn apply_font_info(info: &mut FontInfo, config: &PipelineConfig, ink_y_min: f64,
         .max(config.cap_height + typo_desc.abs())
         .max(min_sum - typo_desc.abs())
         .min(upm.max(config.ascender)); // never past the em unless ascender is
+    // If the ascender is capped at the em, lower the line descender until the
+    // sum reaches the Google Fonts minimum of 1.2 em, on the 8-unit grid.
+    let needed = min_sum - typo_asc;
+    let typo_desc = typo_desc.min(-((needed + 7) / 8 * 8));
     info.open_type_os2_typo_ascender = Some(typo_asc);
     info.open_type_os2_typo_descender = Some(typo_desc);
     info.open_type_os2_typo_line_gap = Some(0);
@@ -551,7 +597,7 @@ fn apply_font_info(info: &mut FontInfo, config: &PipelineConfig, ink_y_min: f64,
     );
     info.open_type_name_license_url = Some("https://openfontlicense.org".to_string());
 
-    info.open_type_os2_vendor_id = Some("NONE".to_string());
+    info.open_type_os2_vendor_id = Some("FTGD".to_string());
 }
 
 /// GF Latin Core coverage of this build.

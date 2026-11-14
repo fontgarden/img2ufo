@@ -4,7 +4,6 @@ mod gf_latin_core;
 mod manifest;
 mod pipeline;
 mod qa;
-mod repo_emit;
 mod spacing;
 mod ufo_builder;
 
@@ -43,7 +42,6 @@ struct Args {
 
     /// Output UFO directory path (e.g. MyFont-Regular.ufo).
     /// Default: <image dir>/<Family>-<Style>.ufo.
-    /// Not needed with --emit-repo (the UFO goes into <repo>/sources/).
     #[arg(short, long)]
     output: Option<PathBuf>,
 
@@ -124,10 +122,10 @@ struct Args {
     #[arg(long)]
     no_qa: bool,
 
-    /// Emit a Google Fonts upstream repo scaffold at this directory
-    /// (sources/<ufo> + config.yaml, OFL.txt, README.md, Makefile, ...)
+    /// Path of the completion worklist (JSON). Default: next to the UFO.
+    /// In a Font.Garden project, give a path under out/.
     #[arg(long)]
-    emit_repo: Option<PathBuf>,
+    worklist: Option<PathBuf>,
 
     /// Verbosity
     #[arg(short, long)]
@@ -196,7 +194,7 @@ fn main() -> Result<()> {
         min_area: args.min_area,
         max_area: args.max_area,
         no_qa: args.no_qa,
-        emit_repo: args.emit_repo,
+        worklist: args.worklist,
         verbose: args.verbose,
         copyright: String::new(),
     };

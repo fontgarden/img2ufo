@@ -31,8 +31,9 @@ use std::collections::{HashMap, HashSet};
 
 /// Mark color for composite glyphs (yellow — generated, cheap to rebuild).
 const COMPOSITE_MARK: &str = "1,1,0,1";
-/// Mark color for derived-ink glyphs (orange — dotless forms, mark aliases).
-const DERIVED_MARK: &str = "1,0.5,0,1";
+/// Mark color for derived-ink glyphs (dotless forms, mark aliases): purple,
+/// an unreviewed machine draft.
+const DERIVED_MARK: &str = crate::ufo_builder::DRAFT_MARK;
 
 // ============================================================================
 // Recipes
@@ -432,16 +433,10 @@ fn set_mark_color(glyph: &mut Glyph, color: &str) {
         .insert("public.markColor".into(), Value::String(color.into()));
 }
 
-fn is_green(existing: Option<&Font>, name: &str) -> Option<Glyph> {
+fn reviewed_glyph(existing: Option<&Font>, name: &str) -> Option<Glyph> {
     let font = existing?;
     let glyph = font.default_layer().get_glyph(name)?;
-    let mark = glyph
-        .lib
-        .get("public.markColor")
-        .and_then(|v| v.as_string())
-        .unwrap_or("");
-    mark.starts_with(crate::ufo_builder::GREEN_MARK_PREFIX)
-        .then(|| glyph.clone())
+    crate::ufo_builder::keep_on_rebuild(glyph).then(|| glyph.clone())
 }
 
 // ============================================================================
@@ -481,7 +476,7 @@ pub fn run(
         if has(font, dotless) {
             continue;
         }
-        if let Some(kept) = is_green(existing, dotless) {
+        if let Some(kept) = reviewed_glyph(existing, dotless) {
             font.default_layer_mut().insert_glyph(kept);
             record_glyph(dotless, cp, encoded, glyph_order);
             continue;
@@ -520,7 +515,7 @@ pub fn run(
         } else {
             (spacing, comb, codepoint_for(spacing))
         };
-        if let Some(kept) = is_green(existing, new_name) {
+        if let Some(kept) = reviewed_glyph(existing, new_name) {
             font.default_layer_mut().insert_glyph(kept);
             if let Some(cp) = cp {
                 record_glyph(new_name, cp, encoded, glyph_order);
@@ -671,7 +666,7 @@ pub fn run(
         if encoded.contains(&cp) || has(font, r.name) {
             continue;
         }
-        if let Some(kept) = is_green(existing, r.name) {
+        if let Some(kept) = reviewed_glyph(existing, r.name) {
             if let Some(b) = ink_bounds(font, &kept, 0) {
                 ink_y_min = ink_y_min.min(b.y0);
                 ink_y_max = ink_y_max.max(b.y1);
@@ -921,7 +916,7 @@ mod tests {
             min_area: 200,
             max_area: 50000,
             no_qa: true,
-            emit_repo: None,
+            worklist: None,
             verbose: false,
             copyright: String::new(),
         }

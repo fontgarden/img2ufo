@@ -3,8 +3,8 @@
 Convert an AI generated or scanned type specimen image into a Google Fonts-compliant [UFO](https://unifiedfontobject.org/) font source.
 
 This tool is the glue between two other Rust tools:
-- [img2glyph](https://github.com/eliheuer/img2glyph) — segments a type specimen into individual glyph PNGs
-- [img2bez](https://github.com/eliheuer/img2bez) — traces bitmap glyphs into cubic bezier outlines
+- [img2glyph](https://github.com/fontgarden/img2glyph) — segments a type specimen into individual glyph PNGs
+- [img2bez](https://github.com/fontgarden/img2bez) — traces bitmap glyphs into cubic bezier outlines
 
 img2ufo orchestrates the full pipeline: one image in, one UFO out.
 
@@ -20,10 +20,10 @@ image-to-placed-font recipe and the pitfall list. Placement details:
 cargo install --path .
 ```
 
-You also need [img2glyph](https://github.com/eliheuer/img2glyph) and [fontc](https://github.com/googlefonts/fontc) on PATH:
+You also need [img2glyph](https://github.com/fontgarden/img2glyph) and [fontc](https://github.com/googlefonts/fontc) on PATH:
 
 ```bash
-cargo install --git https://github.com/eliheuer/img2glyph
+cargo install --git https://github.com/fontgarden/img2glyph
 cargo install fontc
 ```
 
@@ -70,7 +70,7 @@ Start with 5 key glyphs: **H, O, n, o, zero**. These establish stems, rounds, ca
 ./train.sh specimen-001 --rebuild
 ```
 
-Green-marked glyphs are **preserved** — only red glyphs get regenerated. This means you never lose hand-drawn work. The workflow is:
+Graded glyphs are **preserved**: only purple and red glyphs get regenerated. This means you never lose hand-drawn work. The workflow is:
 
 1. Draw and mark green → save
 2. Rebuild → reds regenerated, greens kept
@@ -81,12 +81,18 @@ Green-marked glyphs are **preserved** — only red glyphs get regenerated. This 
 
 ### Color system
 
+These are the Font.Garden mark colors. Purple is a machine draft that the
+designer has not reviewed; the other colors are the designer's grades.
+
 | Color | Meaning | On rebuild |
 |-------|---------|------------|
-| **Green** | Hand-corrected, good | **Kept** |
-| Yellow | Almost good | Regenerated |
-| Orange | Improving | Regenerated |
-| **Red** | Raw pipeline output | Regenerated |
+| **Purple** | Machine draft, not reviewed | Regenerated |
+| **Red** | Graded: broken | Regenerated |
+| Orange | Graded: better, not good enough | **Kept** |
+| Yellow | Graded: close | **Kept** |
+| **Green** | Graded: approved | **Kept** |
+
+A glyph without a mark is also kept.
 
 ### train.sh reference
 
@@ -202,8 +208,8 @@ references/
 
 ## Related tools
 
-- [img2glyph](https://github.com/eliheuer/img2glyph) — glyph segmentation and labeling
-- [img2bez](https://github.com/eliheuer/img2bez) — bitmap to bezier tracing
+- [img2glyph](https://github.com/fontgarden/img2glyph) — glyph segmentation and labeling
+- [img2bez](https://github.com/fontgarden/img2bez) — bitmap to bezier tracing
 - [Runebender](https://github.com/linebender/runebender) — font editor (background image support for tracing)
 - [comfyfont](https://github.com/eliheuer/comfyfont) — ComfyUI font editing nodes
 

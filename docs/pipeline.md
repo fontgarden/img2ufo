@@ -64,20 +64,10 @@ First target corpus: ~/Desktop/letraset/ sheets.
 - [ ] Bridge A/B once the SR model exists (frontier plan item).
 - [ ] Spacing v0 from corpus sidebearing statistics.
 
-## Output repo template: virtua-grotesk
+## Output repository: the Font.Garden project template
 
-Reference (per Eli, 2026-07-05): ~/GH/repos/virtua-grotesk — his
-GF-workflow model repo. img2ufo's stage 4 emits an upstream repo
-shaped like it, and its GOOGLE_FONTS_PORTING_CHECKLIST.md is the
-copy-the-system contract to follow:
-
-- sources/: <Family>-<Style>.ufo + <Family>.designspace +
-  config.yaml (gftools builder) + sources/README.md
-- fonts/ gitignored (built artifacts: ttf/, variable/)
-- OFL.txt, AUTHORS.txt, CONTRIBUTORS.txt, README.md, Makefile +
-  build.sh, documentation/
-- AGENTS.md/CLAUDE.md for the agent workflow (img2bez pattern)
-
-So the full contract: img2ufo(letraset sheet) -> a repo passing both
-fontspector's googlefonts profile AND every unchecked box in the
-porting checklist.
+img2ufo writes a UFO, not a repository. The repository comes from
+https://github.com/fontgarden/font-project-template: create a project from
+it, name it with `make customize`, and run img2ufo with `--output` on the UFO
+in `sources/`. The template has the build, the QA, the agent instructions and
+the task contract of the intake (`.agents/tasks/specimen-intake.md`).

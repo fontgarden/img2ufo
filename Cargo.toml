@@ -5,7 +5,7 @@ edition = "2021"
 description = "Convert a type specimen image to a Google Fonts-compliant UFO font source"
 license = "MIT"
 authors = ["Eli Heuer"]
-repository = "https://github.com/eliheuer/img2ufo"
+repository = "https://github.com/fontgarden/img2ufo"
 
 [[bin]]
 name = "img2ufo"

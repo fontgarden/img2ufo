@@ -2,7 +2,7 @@
 //! (img2bez + norad) -> optional repo emit -> compile + fontspector gate.
 
 use crate::manifest::{Labels, Manifest};
-use crate::{qa, repo_emit, ufo_builder};
+use crate::{qa, ufo_builder};
 use anyhow::{bail, Context, Result};
 use img2bez::Profile;
 use std::path::{Path, PathBuf};
@@ -10,9 +10,10 @@ use std::process::Command;
 
 pub struct PipelineConfig {
     pub input: PathBuf,
-    /// Output UFO path. When `emit_repo` is set the UFO goes to
-    /// `<repo>/sources/<Family>-<Style>.ufo` instead.
+    /// Output UFO path.
     pub output: Option<PathBuf>,
+    /// Path of the completion worklist. Default: next to the UFO.
+    pub worklist: Option<PathBuf>,
     /// If Some, use this directory for glyph PNGs and manifest.json.
     /// If None, use a temporary directory that is cleaned up on exit.
     pub glyph_dir: Option<PathBuf>,
@@ -36,8 +37,6 @@ pub struct PipelineConfig {
     pub max_area: u32,
     /// Skip the compile + fontspector gate.
     pub no_qa: bool,
-    /// Emit a GF upstream repo scaffold at this directory.
-    pub emit_repo: Option<PathBuf>,
     pub verbose: bool,
 
     // Derived at startup:
@@ -87,11 +86,10 @@ pub fn run(config: PipelineConfig) -> Result<()> {
     let ps_style = config.style.replace(' ', "");
     let font_stem = format!("{ps_family}-{ps_style}");
 
-    let ufo_path: PathBuf = match (&config.emit_repo, &config.output) {
-        (Some(repo), _) => repo.join("sources").join(format!("{font_stem}.ufo")),
-        (None, Some(out)) => out.clone(),
+    let ufo_path: PathBuf = match &config.output {
+        Some(out) => out.clone(),
         // Default: the UFO lands next to the input image.
-        (None, None) => config
+        None => config
             .input
             .parent()
             .unwrap_or(Path::new("."))
@@ -206,24 +204,6 @@ pub fn run(config: PipelineConfig) -> Result<()> {
     );
 
     // ------------------------------------------------------------------
-    // Stage 4b: repo scaffold.
-    // ------------------------------------------------------------------
-    if let Some(repo) = &config.emit_repo {
-        repo_emit::emit(
-            repo,
-            &repo_emit::RepoSpec {
-                family: &config.family,
-                style: &config.style,
-                copyright: &config.copyright,
-                git_url: &config.effective_git_url(),
-                designer: &config.designer,
-                ufo_file_name: &format!("{font_stem}.ufo"),
-            },
-        )?;
-        println!("img2ufo: emitted repo scaffold at {}", repo.display());
-    }
-
-    // ------------------------------------------------------------------
     // Stage 5: compile + fontspector gate.
     // ------------------------------------------------------------------
     if config.no_qa {
@@ -233,30 +213,14 @@ pub fn run(config: PipelineConfig) -> Result<()> {
         return Ok(());
     }
 
-    let (ttf_path, qa_report_path) = match &config.emit_repo {
-        Some(repo) => (
-            repo.join("fonts").join("ttf").join(format!("{font_stem}.ttf")),
-            repo.join("fontspector-report.json"),
-        ),
-        None => {
-            let dir = ufo_path.parent().unwrap_or(Path::new(".")).to_path_buf();
-            (
-                dir.join(format!("{font_stem}.ttf")),
-                dir.join(format!("{font_stem}-fontspector.json")),
-            )
-        }
-    };
+    let dir = ufo_path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let ttf_path = dir.join(format!("{font_stem}.ttf"));
+    let qa_report_path = dir.join(format!("{font_stem}-fontspector.json"));
 
     qa::compile(&ufo_path, &ttf_path, config.verbose)?;
     println!("img2ufo: compiled {}", ttf_path.display());
 
-    // In repo mode, skip the check that expects the google/fonts PR layout
-    // (ofl/<familyname>/) — this repo uses the upstream fonts/ttf/ layout.
-    let excludes: &[&str] = if config.emit_repo.is_some() {
-        &["googlefonts/repo/dirname_matches_nameid_1"]
-    } else {
-        &[]
-    };
+    let excludes: &[&str] = &[];
     let summary = qa::run_fontspector(&ttf_path, &qa_report_path, excludes, config.verbose)?;
     println!(
         "img2ufo: fontspector (googlefonts): {} FAIL, {} WARN, {} ERROR — report: {}",
@@ -303,7 +267,7 @@ fn step_segment(
         .status()
         .with_context(|| {
             "Failed to run `img2glyph` — is it installed and on PATH?\n\
-             Install it with: cargo install --git https://github.com/eliheuer/img2glyph"
+             Install it with: cargo install --git https://github.com/fontgarden/img2glyph"
         })?;
     if !status.success() {
         bail!("`img2glyph process` exited with status {status}");
